@@ -11,6 +11,7 @@ import cv2
 
 # Подключаем новый HHTProcessor
 from utils.hht import HHTProcessor
+from utils.hht_cache import HHTCache
 
 
 class OilSpillDataset(Dataset):
@@ -35,9 +36,11 @@ class OilSpillDataset(Dataset):
         self.tab_df.columns = self.tab_df.columns.str.strip()
         self.label_mapping = {"oc":0, "ow":1, "nc":2, "nw":3}
 
+        hht_cache_dir = "HHT_cache"
+
         if self.use_hht:
-            # уменьшение до 128 для ускорения
             self.hht = HHTProcessor(num_imfs=hht_imfs, resize=128)
+            self.hht_cache = HHTCache(hht_cache_dir)
 
     def __len__(self):
         return len(self.image_files)
@@ -70,16 +73,33 @@ class OilSpillDataset(Dataset):
         if self.img_size is not None:
             image_pil = image_pil.resize((self.img_size, self.img_size))
 
-        image_np = np.array(image_pil)
-
-        # ===== HHT =====
         if self.use_hht:
-            imf_maps = self.hht.process(image_np)  # теперь точно (H, W)
-            hht_stack = np.stack(imf_maps, axis=-1)  # (H, W, K)
+            image_np = np.array(image_pil)
+
+            if self.hht_cache.exists(image_name):
+                hht_stack = self.hht_cache.load(image_name)
+            else:
+                imf_maps = self.hht.process(image_np)
+                hht_stack = np.stack(imf_maps, axis=-1)
+
+                # нормализация
+                hht_stack = hht_stack.astype(np.float32)
+                hht_stack = (hht_stack - hht_stack.min()) / (hht_stack.max() + 1e-8)
+
+                self.hht_cache.save(image_name, hht_stack)
+
+            # resize HHT под изображение
+            hht_resized = []
+            for i in range(hht_stack.shape[-1]):
+                hht_resized.append(
+                    cv2.resize(hht_stack[..., i], (self.img_size, self.img_size))
+                )
+            hht_stack = np.stack(hht_resized, axis=-1)
+
+            # объединение
             image_np = np.concatenate([image_np, (hht_stack * 255).astype(np.uint8)], axis=-1)
 
-        # to tensor
-        image = torch.from_numpy(image_np).permute(2, 0, 1).float() / 255.0
+            image = torch.from_numpy(image_np).permute(2, 0, 1).float() / 255.0
 
         # ===== MASK =====
         xml_path = os.path.join(self.annotations_dir, xml_name)
