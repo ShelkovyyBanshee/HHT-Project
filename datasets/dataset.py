@@ -9,7 +9,6 @@ from utils.mask import create_mask
 import numpy as np
 import cv2
 
-# Подключаем новый HHTProcessor
 from utils.hht import HHTProcessor
 from utils.hht_cache import HHTCache
 
@@ -82,13 +81,12 @@ class OilSpillDataset(Dataset):
                 imf_maps = self.hht.process(image_np)
                 hht_stack = np.stack(imf_maps, axis=-1)
 
-                # нормализация
+
                 hht_stack = hht_stack.astype(np.float32)
                 hht_stack = (hht_stack - hht_stack.min()) / (hht_stack.max() + 1e-8)
 
                 self.hht_cache.save(image_name, hht_stack)
 
-            # resize HHT под изображение
             hht_resized = []
             for i in range(hht_stack.shape[-1]):
                 hht_resized.append(
@@ -96,12 +94,10 @@ class OilSpillDataset(Dataset):
                 )
             hht_stack = np.stack(hht_resized, axis=-1)
 
-            # объединение
             image_np = np.concatenate([image_np, (hht_stack * 255).astype(np.uint8)], axis=-1)
 
             image = torch.from_numpy(image_np).permute(2, 0, 1).float() / 255.0
 
-        # ===== MASK =====
         xml_path = os.path.join(self.annotations_dir, xml_name)
         if os.path.exists(xml_path):
             boxes, _ = parse_xml(xml_path)
@@ -111,7 +107,6 @@ class OilSpillDataset(Dataset):
 
         mask = T.ToTensor()(mask)
 
-        # ===== LABEL =====
         label = self.get_label(image_name)
         label = torch.tensor(label, dtype=torch.long)
 

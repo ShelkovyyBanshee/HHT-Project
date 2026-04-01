@@ -10,12 +10,7 @@ from losses.losses import CombinedLoss
 
 from torch.cuda.amp import autocast, GradScaler
 
-# ===== FUNCTION: SMOOTH MASK =====
 def smooth_mask(mask_tensor):
-    """
-    mask_tensor: [B, 1, H, W]
-    возвращает сглаженную маску (soft labels)
-    """
     mask_np = mask_tensor.cpu().numpy()
 
     smoothed = []
@@ -36,17 +31,14 @@ def smooth_mask(mask_tensor):
     return smoothed.to(mask_tensor.device)
 
 if __name__ == '__main__':
-    # ===== ПАРАМЕТРЫ =====
     IMG_SIZE = 640
     BATCH_SIZE = 4
     EPOCHS = 10
     HHT_IMFS = 2
 
-    # ===== DEVICE =====
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Device:", device)
 
-    # ===== DATA =====
     dataset = OilSpillDataset(
         images_dir="data/images",
         annotations_dir="data/annotations",
@@ -57,22 +49,16 @@ if __name__ == '__main__':
 
     loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 
-    # ===== MODEL =====
     model = UNetResNet34(in_channels=3 + HHT_IMFS).to(device)
 
-    # ===== LOSS =====
     criterion = CombinedLoss()
 
-    # ===== OPTIMIZER =====
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
-    # ===== AMP =====
     scaler = GradScaler()
 
-    # ===== SAVE DIR =====
     os.makedirs("checkpoints", exist_ok=True)
 
-    # ===== TRAIN =====
     best_loss = float("inf")
 
     for epoch in range(EPOCHS):
@@ -103,17 +89,14 @@ if __name__ == '__main__':
             epoch_seg += seg_loss.item()
             epoch_clf += clf_loss.item()
 
-        # усреднение
         epoch_loss /= len(loader)
         epoch_seg /= len(loader)
         epoch_clf /= len(loader)
 
         print(f"Epoch {epoch}: total={epoch_loss:.4f}, seg={epoch_seg:.4f}, clf={epoch_clf:.4f}")
 
-        # ===== SAVE BEST =====
         if epoch_loss < best_loss:
             best_loss = epoch_loss
             torch.save(model.state_dict(), "checkpoints/best_model.pth")
 
-        # ===== SAVE LAST =====
         torch.save(model.state_dict(), f"checkpoints/model_epoch_{epoch}.pth")

@@ -8,13 +8,10 @@ class UNetResNet34(nn.Module):
     def __init__(self, in_channels=5, num_classes_seg=1, num_classes_clf=4, pretrained=True):
         super().__init__()
 
-        # --- Backbone ResNet34 ---
         self.backbone = models.resnet34(pretrained=pretrained)
 
-        # Заменяем первый conv под наши каналы
         self.backbone.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
-        # Encoder
         self.encoder0 = nn.Sequential(self.backbone.conv1, self.backbone.bn1, self.backbone.relu)
         self.pool0 = self.backbone.maxpool
         self.encoder1 = self.backbone.layer1
@@ -22,7 +19,6 @@ class UNetResNet34(nn.Module):
         self.encoder3 = self.backbone.layer3
         self.encoder4 = self.backbone.layer4
 
-        # Decoder
         self.up4 = nn.ConvTranspose2d(512, 256, 2, stride=2)
         self.dec4 = nn.Sequential(nn.Conv2d(512, 256, 3, padding=1), nn.ReLU(inplace=True))
 
@@ -35,10 +31,8 @@ class UNetResNet34(nn.Module):
         self.up1 = nn.ConvTranspose2d(64, 64, 2, stride=2)
         self.dec1 = nn.Sequential(nn.Conv2d(128, 64, 3, padding=1), nn.ReLU(inplace=True))
 
-        # Segmentation head
         self.seg_head = nn.Conv2d(64, num_classes_seg, kernel_size=1)
 
-        # Classification head
         self.clf_head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
@@ -46,7 +40,6 @@ class UNetResNet34(nn.Module):
         )
 
     def forward(self, x):
-        # --- Encoder ---
         e0 = self.encoder0(x)
         p0 = self.pool0(e0)
         e1 = self.encoder1(p0)
@@ -54,7 +47,6 @@ class UNetResNet34(nn.Module):
         e3 = self.encoder3(e2)
         e4 = self.encoder4(e3)
 
-        # --- Decoder ---
         d4 = self.up4(e4)
         d4 = self.dec4(torch.cat([d4, e3], dim=1))
 
