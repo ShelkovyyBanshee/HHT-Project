@@ -6,6 +6,7 @@ import cv2
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QFileDialog, QVBoxLayout
 )
+
 from PyQt5.QtGui import QPixmap, QImage
 
 from models.unet_resnet34 import UNetResNet34
@@ -13,9 +14,9 @@ from utils.hht import HHTProcessor
 
 
 # ===== ПАРАМЕТРЫ =====
-IMG_SIZE = 256
+IMG_SIZE = 640
 HHT_IMFS = 2
-MODEL_PATH = "checkpoints/best_model.pth"
+MODEL_PATH = "checkpoints/model_epoch_9.pth"
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -30,7 +31,13 @@ hht = HHTProcessor(num_imfs=HHT_IMFS, resize=128)
 
 # ===== ПРЕПРОЦЕССИНГ =====
 def preprocess(image_path):
-    image = cv2.imread(image_path)
+    # Безопасная загрузка изображения с путями на кириллице
+    file_bytes = np.fromfile(image_path, dtype=np.uint8)
+    image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+    if image is None:
+        raise ValueError(f"Не удалось загрузить изображение: {image_path}")
+
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     image = cv2.resize(image, (IMG_SIZE, IMG_SIZE))
 
@@ -38,7 +45,10 @@ def preprocess(image_path):
     imf_maps = hht.process(image)
     hht_stack = np.stack(imf_maps, axis=-1)
 
-    image_full = np.concatenate([image, (hht_stack * 255).astype(np.uint8)], axis=-1)
+    image_full = np.concatenate(
+        [image, (hht_stack * 255).astype(np.uint8)],
+        axis=-1
+    )
 
     image_tensor = torch.from_numpy(image_full).permute(2, 0, 1).float() / 255.0
     return image, image_tensor.unsqueeze(0).to(device)
